@@ -1,4 +1,5 @@
 // server.js (CommonJS)
+
 const express = require("express");
 const multer = require("multer");
 const fs = require("fs");
@@ -7,117 +8,245 @@ const { exec } = require("child_process");
 const cors = require("cors");
 
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: "50mb" })); // receive edited HTML
 
+// Cross-platform Python command
+const PYTHON_CMD = process.platform === "win32" ? "python" : "python3";
+
+app.use(cors());
+app.use(express.json({ limit: "50mb" }));
+
+// Frontend folder
 const FRONTEND_DIR = path.join(__dirname, "frontend");
 app.use(express.static(FRONTEND_DIR));
 
-// ensure folders
+// Create folders if not exist
 if (!fs.existsSync("uploads")) fs.mkdirSync("uploads");
 if (!fs.existsSync("converted")) fs.mkdirSync("converted");
 
+// Multer storage setup
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads"),
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname));
+  }
 });
+
 const upload = multer({ storage });
 
-// ------ 1) Upload PDF -> Convert to DOCX ------
+// ===============================
+// HOME ROUTE
+// ===============================
+app.get("/", (req, res) => {
+  res.sendFile(path.join(FRONTEND_DIR, "index.html"));
+});
+
+// ===============================
+// PDF -> DOCX
+// ===============================
 app.post("/upload", upload.single("file"), (req, res) => {
   try {
-    if (!req.file) return res.status(400).send("No file uploaded.");
+    if (!req.file) {
+      return res.status(400).send("No file uploaded.");
+    }
 
     const pdfPath = req.file.path;
+
     const docxName = req.file.filename.replace(/\.pdf$/i, ".docx");
+
     const docxPath = path.join("converted", docxName);
 
-    console.log("Converting:", pdfPath, "→", docxPath);
+    console.log("Starting PDF conversion...");
+    console.log("Input:", pdfPath);
+    console.log("Output:", docxPath);
 
-    // Increase maxBuffer to allow large output from python
-    exec(`python3 convert_pdf.py "${pdfPath}" "${docxPath}"`, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
-      if (err) {
-        console.error("Conversion error:", stderr || err);
-        return res.status(500).send("Conversion failed: " + (stderr || err.message));
+    const command = `${PYTHON_CMD} convert_pdf.py "${pdfPath}" "${docxPath}"`;
+
+    console.log("Running:", command);
+
+    exec(
+      command,
+      { maxBuffer: 1024 * 1024 * 50 },
+      (err, stdout, stderr) => {
+
+        console.log("STDOUT:", stdout);
+        console.log("STDERR:", stderr);
+
+        if (err) {
+          console.error("Conversion Error:", err);
+          return res.status(500).send(
+            "Upload/convert failed: " + (stderr || err.message)
+          );
+        }
+
+        if (!fs.existsSync(docxPath)) {
+          console.error("DOCX file missing.");
+          return res.status(500).send("Converted DOCX not found.");
+        }
+
+        res.setHeader(
+          "Content-Type",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${docxName}"`
+        );
+
+        fs.createReadStream(docxPath).pipe(res);
       }
+    );
 
-      if (!fs.existsSync(docxPath)) {
-        console.error("Converted docx missing:", docxPath);
-        return res.status(500).send("Converted file not found");
-      }
-
-      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-      res.setHeader("Content-Disposition", `attachment; filename="${docxName}"`);
-      const stream = fs.createReadStream(docxPath);
-      stream.pipe(res);
-    });
   } catch (e) {
-    console.error(e);
+    console.error("Server Error:", e);
     res.status(500).send("Server error: " + e.message);
   }
 });
 
-// ------ 2) HTML -> PDF (edited content from editor) ------
+// ===============================
+// HTML -> PDF
+// ===============================
 app.post("/html-to-pdf", (req, res) => {
   try {
-    const html = req.body.html;
-    if (!html) return res.status(400).send("No HTML provided");
 
-    const tempHtml = path.join("uploads", `edited_${Date.now()}.html`);
-    const outPdf = path.join("converted", `edited_${Date.now()}.pdf`);
+    const html = req.body.html;
+
+    if (!html) {
+      return res.status(400).send("No HTML provided");
+    }
+
+    const tempHtml = path.join(
+      "uploads",
+      `edited_${Date.now()}.html`
+    );
+
+    const outPdf = path.join(
+      "converted",
+      `edited_${Date.now()}.pdf`
+    );
+
     fs.writeFileSync(tempHtml, html, "utf8");
 
-    console.log("Converting edited HTML to PDF:", tempHtml);
+    console.log("Converting HTML -> PDF");
+    console.log("HTML:", tempHtml);
+    console.log("PDF:", outPdf);
 
-    exec(`python3 convert_html_to_pdf.py "${tempHtml}" "${outPdf}"`, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
-      if (err) {
-        console.error("HTML->PDF error:", stderr || err);
-        return res.status(500).send("PDF conversion failed: " + (stderr || err.message));
+    const command =
+      `${PYTHON_CMD} convert_html_to_pdf.py "${tempHtml}" "${outPdf}"`;
+
+    exec(
+      command,
+      { maxBuffer: 1024 * 1024 * 50 },
+      (err, stdout, stderr) => {
+
+        console.log("STDOUT:", stdout);
+        console.log("STDERR:", stderr);
+
+        if (err) {
+          console.error("HTML->PDF Error:", err);
+
+          return res.status(500).send(
+            "PDF conversion failed: " + (stderr || err.message)
+          );
+        }
+
+        if (!fs.existsSync(outPdf)) {
+          return res.status(500).send("PDF not created.");
+        }
+
+        res.setHeader("Content-Type", "application/pdf");
+
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${path.basename(outPdf)}"`
+        );
+
+        fs.createReadStream(outPdf).pipe(res);
       }
+    );
 
-      if (!fs.existsSync(outPdf)) {
-        console.error("PDF not created:", outPdf);
-        return res.status(500).send("PDF file not created");
-      }
-
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${path.basename(outPdf)}"`);
-      const stream = fs.createReadStream(outPdf);
-      stream.pipe(res);
-    });
   } catch (e) {
     console.error(e);
     res.status(500).send("Server error: " + e.message);
   }
 });
 
-// ------ 3) Compress PDF (accepts a PDF upload) ------
+// ===============================
+// PDF Compression
+// ===============================
 app.post("/compress-pdf", upload.single("file"), (req, res) => {
+
   try {
-    if (!req.file) return res.status(400).send("No file uploaded for compression");
+
+    if (!req.file) {
+      return res.status(400).send("No PDF uploaded.");
+    }
 
     const inputPdf = req.file.path;
-    const outName = req.file.filename.replace(/\.pdf$/i, "_compressed.pdf");
+
+    const outName = req.file.filename.replace(
+      /\.pdf$/i,
+      "_compressed.pdf"
+    );
+
     const outPdf = path.join("converted", outName);
 
-    // Ghostscript command (must be installed)
-    const gsCmd = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/ebook -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${outPdf}" "${inputPdf}"`;
+    console.log("Compressing PDF...");
 
-    exec(gsCmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
-      if (err) {
-        console.error("Compression error:", stderr || err);
-        return res.status(500).send("Compression failed: " + (stderr || err.message));
+    const gsCmd = `
+      gs
+      -sDEVICE=pdfwrite
+      -dCompatibilityLevel=1.4
+      -dPDFSETTINGS=/ebook
+      -dNOPAUSE
+      -dQUIET
+      -dBATCH
+      -sOutputFile="${outPdf}"
+      "${inputPdf}"
+    `.replace(/\s+/g, " ");
+
+    exec(
+      gsCmd,
+      { maxBuffer: 1024 * 1024 * 50 },
+      (err, stdout, stderr) => {
+
+        console.log("STDOUT:", stdout);
+        console.log("STDERR:", stderr);
+
+        if (err) {
+          console.error("Compression Error:", err);
+
+          return res.status(500).send(
+            "Compression failed. Ghostscript may not exist on Render."
+          );
+        }
+
+        if (!fs.existsSync(outPdf)) {
+          return res.status(500).send("Compressed PDF missing.");
+        }
+
+        res.setHeader("Content-Type", "application/pdf");
+
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${outName}"`
+        );
+
+        fs.createReadStream(outPdf).pipe(res);
       }
-      if (!fs.existsSync(outPdf)) return res.status(500).send("Compressed PDF missing");
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${outName}"`);
-      fs.createReadStream(outPdf).pipe(res);
-    });
+    );
+
   } catch (e) {
     console.error(e);
     res.status(500).send("Server error: " + e.message);
   }
 });
 
+// ===============================
+// START SERVER
+// ===============================
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(` Server running on port ${PORT}`));
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
