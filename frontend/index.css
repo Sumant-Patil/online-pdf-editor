@@ -43,3 +43,10 @@ body {
 .tox-tinymce {
   border-radius: 12px !important;
 }
+#editor img{
+  max-width:100%;
+  height:auto;
+  display:block;
+  margin:10px auto;
+  object-fit:contain;
+}
