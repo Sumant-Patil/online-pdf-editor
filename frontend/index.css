@@ -32,3 +32,14 @@ button:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(37,99,235,0.1
   #editor{height:320px}
   .card{padding:18px}
 }
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+.tox-tinymce {
+  border-radius: 12px !important;
+}
