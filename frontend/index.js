@@ -1,136 +1,245 @@
 // frontend/index.js
-const uploadBtn = document.getElementById("uploadBtn");
-const fileInput = document.getElementById("fileInput");
-const status = document.getElementById("status");
-const editorSection = document.getElementById("editor-section");
-const downloadDocxBtn = document.getElementById("downloadDocxBtn");
-const saveBtn = document.getElementById("saveBtn");
-const compressBtn = document.getElementById("compressBtn");
 
-// TinyMCE init
-tinymce.init({
-  selector: "#editor",
-  height: 480,
-  menubar: true,
-  plugins: "lists link image table code",
-  toolbar: "undo redo | styles | bold italic underline | alignleft aligncenter alignright | bullist numlist outdent indent | table | code",
-}).then(() => {
-  console.log("TinyMCE ready");
-});
+const uploadBtn =
+  document.getElementById("uploadBtn");
+
+const fileInput =
+  document.getElementById("fileInput");
+
+const status =
+  document.getElementById("status");
+
+const editorSection =
+  document.getElementById("editor-section");
+
+const downloadDocxBtn =
+  document.getElementById("downloadDocxBtn");
+
+const saveBtn =
+  document.getElementById("saveBtn");
+
+const editor =
+  document.getElementById("editor");
 
 let lastDocxBlob = null;
-let lastPdfBlob = null;
+
+// =====================================
+// Upload PDF -> Convert -> Load Editor
+// =====================================
 
 uploadBtn.addEventListener("click", async () => {
+
   const file = fileInput.files[0];
+
   if (!file) {
-    status.textContent = "Please select a PDF file.";
+    status.textContent =
+      "Please select a PDF file.";
     return;
   }
 
-  status.textContent = "Uploading and converting... ⏳";
+  status.textContent =
+    "Uploading and converting... ⏳";
+
   const form = new FormData();
+
   form.append("file", file);
 
   try {
+
     const res = await fetch("/upload", {
       method: "POST",
       body: form
     });
 
-    if (!res.ok) throw new Error("Upload/convert failed: " + res.statusText);
+    if (!res.ok) {
 
-    // receive docx as blob
+      const errorText = await res.text();
+
+      throw new Error(errorText);
+    }
+
+    // Receive DOCX blob
     const blob = await res.blob();
+
     lastDocxBlob = blob;
 
-    // set download button for raw docx
-    downloadDocxBtn.style.display = "inline-block";
+    // =====================================
+    // Download DOCX Button
+    // =====================================
+
+    downloadDocxBtn.style.display =
+      "inline-block";
+
     downloadDocxBtn.onclick = () => {
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = (file.name || "converted") .replace(/\.pdf$/i, ".docx");
+
+      const a =
+        document.createElement("a");
+
+      a.href =
+        URL.createObjectURL(blob);
+
+      a.download =
+        (file.name || "converted")
+          .replace(/\.pdf$/i, ".docx");
+
       a.click();
     };
 
-    // Convert docx blob -> ArrayBuffer -> mammoth convertToHtml
-    const arrayBuffer = await blob.arrayBuffer();
-    const result = await mammoth.convertToHtml({ arrayBuffer });
-    const html = result.value || "<p>(empty)</p>";
+    // =====================================
+    // DOCX -> HTML
+    // =====================================
 
-    // Set content into TinyMCE
-    const editor = tinymce.get("editor");
-    editor.setContent(html);
+    const arrayBuffer =
+      await blob.arrayBuffer();
+
+    const result =
+      await mammoth.convertToHtml({
+        arrayBuffer
+      });
+
+    // Create temporary container
+    const tempDiv =
+      document.createElement("div");
+
+    tempDiv.innerHTML =
+      result.value || "<p>Empty document</p>";
+
+    // =====================================
+    // Improve image rendering
+    // =====================================
+
+    const images =
+      tempDiv.querySelectorAll("img");
+
+    images.forEach((img) => {
+
+      // Preserve aspect ratio
+      img.style.maxWidth = "100%";
+
+      img.style.height = "auto";
+
+      img.style.display = "block";
+
+      img.style.margin = "10px auto";
+
+      img.style.objectFit = "contain";
+
+      // Prevent stretching
+      img.removeAttribute("width");
+      img.removeAttribute("height");
+
+      // Better rendering
+      img.style.imageRendering = "auto";
+
+      // Responsive behavior
+      img.style.borderRadius = "8px";
+    });
+
+    // =====================================
+    // Improve table rendering
+    // =====================================
+
+    const tables =
+      tempDiv.querySelectorAll("table");
+
+    tables.forEach((table) => {
+
+      table.style.width = "100%";
+
+      table.style.borderCollapse = "collapse";
+
+      table.style.marginBottom = "20px";
+
+      table.querySelectorAll("td, th")
+        .forEach(cell => {
+
+          cell.style.border =
+            "1px solid #ddd";
+
+          cell.style.padding =
+            "8px";
+        });
+    });
+
+    // =====================================
+    // Load into editor
+    // =====================================
+
+    editor.innerHTML =
+      tempDiv.innerHTML;
+
     editorSection.classList.remove("hidden");
-    status.textContent = "DOCX loaded into editor ✅";
+
+    status.textContent =
+      "Document loaded successfully ✅";
+
   } catch (err) {
+
     console.error(err);
-    status.textContent = "Error: " + err.message;
+
+    status.textContent =
+      "Error: " + err.message;
   }
 });
 
-// Save edited doc content (HTML) and convert to PDF on server
-saveBtn.addEventListener("click", async () => {
-  try {
-    const editor = tinymce.get("editor");
-    const htmlContent = editor.getContent();
+// =====================================
+// Save Edited HTML -> PDF
+// =====================================
 
-    status.textContent = "Sending edited content to server for PDF conversion... ⏳";
+saveBtn.addEventListener("click", async () => {
+
+  try {
+
+    const htmlContent =
+      editor.innerHTML;
+
+    status.textContent =
+      "Generating PDF... ⏳";
 
     const res = await fetch("/html-to-pdf", {
+
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ html: htmlContent })
+
+      headers: {
+        "Content-Type": "application/json"
+      },
+
+      body: JSON.stringify({
+        html: htmlContent
+      })
     });
 
-    if (!res.ok) throw new Error("PDF conversion failed: " + res.statusText);
+    if (!res.ok) {
 
-    const pdfBlob = await res.blob();
-    lastPdfBlob = pdfBlob;
+      const errorText =
+        await res.text();
 
-    // create download link (auto click)
-    const url = URL.createObjectURL(pdfBlob);
-    const a = document.createElement("a");
+      throw new Error(errorText);
+    }
+
+    const pdfBlob =
+      await res.blob();
+
+    const url =
+      URL.createObjectURL(pdfBlob);
+
+    const a =
+      document.createElement("a");
+
     a.href = url;
+
     a.download = "edited.pdf";
+
     a.click();
 
-    status.textContent = "PDF created and downloaded ✅ You can compress it using Compress button.";
+    status.textContent =
+      "PDF downloaded successfully ✅";
+
   } catch (err) {
+
     console.error(err);
-    status.textContent = "Error: " + err.message;
-  }
-});
 
-// Compress the last produced PDF on server
-compressBtn.addEventListener("click", async () => {
-  if (!lastPdfBlob) {
-    status.textContent = "No PDF available yet. Save first to get a PDF to compress.";
-    return;
-  }
-
-  status.textContent = "Uploading PDF to compress... ⏳";
-  const form = new FormData();
-  form.append("file", lastPdfBlob, "last.pdf");
-
-  try {
-    const res = await fetch("/compress-pdf", {
-      method: "POST",
-      body: form
-    });
-
-    if (!res.ok) throw new Error("Compression failed: " + res.statusText);
-
-    const cblob = await res.blob();
-    const url = URL.createObjectURL(cblob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "edited_compressed.pdf";
-    a.click();
-
-    status.textContent = "Compressed PDF downloaded ✅";
-  } catch (err) {
-    console.error(err);
-    status.textContent = "Error compressing: " + err.message;
+    status.textContent =
+      "Error: " + err.message;
   }
 });
