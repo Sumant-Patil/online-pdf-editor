@@ -1,0 +1,34 @@
+/* simple modern aesthetic */
+:root{
+  --blue: #2563eb;
+  --bg: #f4f8ff;
+  --card: #ffffff;
+  --muted: #6b7280;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; font-family:Inter,system-ui,Segoe UI,Arial; background:linear-gradient(180deg,var(--bg),#f8fbff); color:#0f172a;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+}
+.app{max-width:980px;margin:48px auto;padding:16px}
+.top{text-align:center;margin-bottom:20px}
+.top h1{color:var(--blue);margin-bottom:6px}
+.card{background:var(--card);padding:28px;border-radius:14px;box-shadow:0 10px 30px rgba(16,24,40,0.06)}
+.upload-area{display:flex;flex-direction:column;align-items:center;gap:12px}
+#fileInput{width:80%;padding:12px;border-radius:10px;border:2px dashed #bfdbfe;background:#fbfdff}
+.buttons{display:flex;gap:12px;align-items:center}
+button{background:var(--blue);color:white;border:none;padding:10px 16px;border-radius:10px;cursor:pointer;font-weight:600}
+button:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(37,99,235,0.15)}
+#status{color:var(--muted);margin-top:6px}
+
+.editor-section{margin-top:22px}
+.hidden{display:none}
+#editor{width:100%;height:480px;border-radius:10px;border:1px solid #e6edf8;padding:8px;background:#fafcff}
+.editor-actions{display:flex;gap:12px; margin-top:10px; justify-content:center}
+
+.foot{text-align:center;margin-top:18px;color:var(--muted)}
+@media (max-width:640px){
+  #fileInput{width:100%}
+  #editor{height:320px}
+  .card{padding:18px}
+}
