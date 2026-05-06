@@ -1,0 +1,6 @@
+pdf2docx
+python-docx
+fpdf
+weasyprint
+reportlab
+beautifulsoup4
