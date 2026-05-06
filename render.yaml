@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: online-pdf-editor
+    env: node
+    buildCommand: |
+      npm install
+      pip install -r requirements.txt
+    startCommand: node server.js
